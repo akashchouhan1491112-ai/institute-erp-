@@ -1,0 +1,640 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// 1. Multi-Branch Support
+model Branch {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  name        String
+  city        String
+  state       String
+  address     String
+  phone       String
+  email       String
+  gstNumber   String?
+  isMain      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  students    Student[]
+  teachers    Teacher[]
+  courses     Course[]
+  batches     Batch[]
+  enquiries   Enquiry[]
+}
+
+// 2. Roles & Permissions
+model Role {
+  id              String   @id @default(cuid())
+  name            String   @unique // SUPER_ADMIN, ADMIN, TEACHER, STUDENT, PARENT
+  displayName     String
+  permissionsJson String   // JSON array of permission strings
+  createdAt       DateTime @default(now())
+}
+
+// 3. Users (Authentication & RBAC)
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  phone        String
+  passwordHash String
+  role         String    @default("STUDENT") // SUPER_ADMIN, ADMIN, TEACHER, STUDENT, PARENT
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  resetToken   String?
+  resetExpires DateTime?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  student       Student?
+  teacher       Teacher?
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+  @@index([role])
+}
+
+// 4. Students
+model Student {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId         String?
+  branch           Branch?  @relation(fields: [branchId], references: [id])
+  studentCode      String   @unique // e.g. STU-2026-1001
+  admissionNumber  String   @unique // e.g. ADM-2026-1001
+  fullName         String
+  dob              String
+  gender           String
+  phone            String
+  email            String
+  photoUrl         String?
+  address          String
+  city             String
+  state            String
+  pinCode          String
+  qualification    String
+  previousSchool   String
+  academicSession  String   @default("2026-2027")
+  status           String   @default("ACTIVE") // ACTIVE, INACTIVE, COMPLETED, DROPPED_OUT
+  courseId         String?
+  course           Course?  @relation(fields: [courseId], references: [id])
+  enrolledAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  guardian         Guardian?
+  batches          StudentBatch[]
+  admissions       Admission[]
+  documents        Document[]
+  feeAssignments   StudentFeeAssignment[]
+  payments         Payment[]
+  attendance       Attendance[]
+  examMarks        ExamMark[]
+
+  @@index([studentCode])
+  @@index([status])
+  @@index([courseId])
+}
+
+// 5. Guardians / Parents
+model Guardian {
+  id             String   @id @default(cuid())
+  studentId      String   @unique
+  student        Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fatherName     String
+  motherName     String
+  guardianPhone  String
+  guardianEmail  String?
+  occupation     String
+  emergencyPhone String
+  annualIncome   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// 6. Teachers / Faculty
+model Teacher {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branchId        String?
+  branch          Branch?  @relation(fields: [branchId], references: [id])
+  employeeCode    String   @unique // e.g. FAC-2026-01
+  fullName        String
+  designation     String
+  specialization  String
+  qualification   String
+  experienceYears Int      @default(5)
+  phone           String
+  email           String
+  photoUrl        String?
+  bio             String
+  isPublic        Boolean  @default(true)
+  status          String   @default("ACTIVE")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  batches         Batch[]
+  assignments     Assignment[]
+  studyMaterials  StudyMaterial[]
+}
+
+// 7. Courses
+model Course {
+  id             String   @id @default(cuid())
+  branchId       String?
+  branch         Branch?  @relation(fields: [branchId], references: [id])
+  code           String   @unique // e.g. JEE-ADV-2Y
+  title          String
+  slug           String   @unique
+  category       String   // JEE, NEET, FOUNDATION, UPSC, COMMERCE, CODING
+  shortDesc      String
+  description    String
+  duration       String   // e.g. "2 Years (24 Months)"
+  eligibility    String   // e.g. "Class 10 Passed / Appearing"
+  syllabusJson   String   // JSON array of modules/topics
+  baseFee        Float
+  registrationFee Float   @default(1000)
+  admissionFee   Float    @default(5000)
+  studyMatFee    Float    @default(4000)
+  examFee        Float    @default(2000)
+  gstPercent     Float    @default(18)
+  capacity       Int      @default(120)
+  status         String   @default("ACTIVE") // ACTIVE, UPCOMING, ARCHIVED
+  featured       Boolean  @default(true)
+  facultySummary String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  batches        Batch[]
+  students       Student[]
+  registrations  Registration[]
+  admissions     Admission[]
+  feeStructures  FeeStructure[]
+  examinations   Examination[]
+  studyMaterials StudyMaterial[]
+
+  @@index([slug])
+  @@index([status])
+}
+
+// 8. Batches
+model Batch {
+  id          String   @id @default(cuid())
+  branchId    String?
+  branch      Branch?  @relation(fields: [branchId], references: [id])
+  code        String   @unique // e.g. JEE-26-MOR-A
+  name        String
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacherId   String?
+  teacher     Teacher? @relation(fields: [teacherId], references: [id])
+  startDate   String
+  endDate     String
+  days        String   // e.g. "Mon, Tue, Wed, Thu, Fri, Sat"
+  timing      String   // e.g. "08:00 AM - 12:30 PM"
+  mode        String   @default("OFFLINE") // OFFLINE, ONLINE, HYBRID
+  room        String   // e.g. "Hall 201 (block A) / Live Zoom"
+  maxCapacity Int      @default(40)
+  batchFeeOverride Float?
+  status      String   @default("ACTIVE") // ACTIVE, UPCOMING, COMPLETED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments    StudentBatch[]
+  registrations  Registration[]
+  admissions     Admission[]
+  attendance     Attendance[]
+  examinations   Examination[]
+  assignments    Assignment[]
+  studyMaterials StudyMaterial[]
+
+  @@index([courseId])
+  @@index([teacherId])
+}
+
+// 9. Student-Batch Allocation
+model StudentBatch {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  isActive  Boolean  @default(true)
+
+  @@unique([studentId, batchId])
+}
+
+// 10. Online Student Registrations
+model Registration {
+  id                String   @id @default(cuid())
+  regNumber         String   @unique // e.g. REG-2026-5001
+  status            String   @default("SUBMITTED") // DRAFT, SUBMITTED, UNDER_REVIEW, CORRECTION_REQUIRED, APPROVED, REJECTED
+  fullName          String
+  dob               String
+  gender            String
+  phone             String
+  email             String
+  photoUrl          String?
+  address           String
+  city              String
+  state             String
+  pinCode           String
+  fatherName        String
+  motherName        String
+  parentPhone       String
+  occupation        String
+  emergencyPhone    String
+  qualification     String
+  previousSchool    String
+  academicDetails   String
+  courseId          String
+  course            Course   @relation(fields: [courseId], references: [id])
+  preferredBatchId  String?
+  preferredBatch    Batch?   @relation(fields: [preferredBatchId], references: [id])
+  regFeeAmount      Float    @default(1000)
+  regFeePaid        Boolean  @default(false)
+  regPaymentRef     String?
+  parentConsent     Boolean  @default(true)
+  reviewNotes       String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  documents         Document[]
+  admission         Admission?
+
+  @@index([regNumber])
+  @@index([phone])
+  @@index([status])
+}
+
+// 11. Admission Management
+model Admission {
+  id                String       @id @default(cuid())
+  admissionNumber   String       @unique // e.g. ADM-2026-1001
+  registrationId    String       @unique
+  registration      Registration @relation(fields: [registrationId], references: [id])
+  studentId         String?
+  student           Student?     @relation(fields: [studentId], references: [id])
+  courseId          String
+  course            Course       @relation(fields: [courseId], references: [id])
+  batchId           String?
+  batch             Batch?       @relation(fields: [batchId], references: [id])
+  status            String       @default("PENDING") // PENDING, DOCS_VERIFIED, APPROVED, REJECTED, ENROLLED
+  docsVerified      Boolean      @default(false)
+  capacityOverridden Boolean     @default(false)
+  scholarshipDiscount Float      @default(0)
+  remarks           String?
+  approvedBy        String?
+  admissionDate     DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([admissionNumber])
+  @@index([status])
+}
+
+// 12. Uploaded Documents
+model Document {
+  id             String        @id @default(cuid())
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  studentId      String?
+  student        Student?      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  docType        String        // PHOTO, ID_PROOF, MARKSHEET, OTHER
+  title          String
+  fileName       String
+  fileUrl        String
+  mimeType       String        @default("application/pdf")
+  fileSizeKb     Int           @default(240)
+  verified       Boolean       @default(false)
+  verifiedBy     String?
+  uploadedAt     DateTime      @default(now())
+}
+
+// 13. Configurable Fee Structures
+model FeeStructure {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  name        String   // e.g. "Standard 2-Year JEE Fee Package"
+  category    String   // REGISTRATION, ADMISSION, TUITION, EXAM, STUDY_MATERIAL, OTHER
+  amount      Float
+  gstPercent  Float    @default(18)
+  frequency   String   @default("INSTALLMENT") // ONE_TIME, MONTHLY, QUARTERLY, INSTALLMENT
+  isMandatory Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// 14. Student Fee Ledger Assignment
+model StudentFeeAssignment {
+  id               String   @id @default(cuid())
+  studentId        String
+  student          Student  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  academicSession  String   @default("2026-2027")
+  planType         String   @default("INSTALLMENT") // ONE_TIME, MONTHLY, QUARTERLY, INSTALLMENT, CUSTOM
+  baseTuitionFee   Float
+  registrationFee  Float    @default(1000)
+  admissionFee     Float    @default(5000)
+  studyMaterialFee Float    @default(4000)
+  examFee          Float    @default(2000)
+  discountType     String?  // SCHOLARSHIP, PROMOTIONAL, SIBLING, MERIT
+  discountAmount   Float    @default(0)
+  discountReason   String?
+  gstPercent       Float    @default(18)
+  taxAmount        Float    @default(0)
+  lateFeeAmount    Float    @default(0)
+  netPayable       Float
+  paidAmount       Float    @default(0)
+  refundedAmount   Float    @default(0)
+  balanceAmount    Float
+  status           String   @default("PARTIAL") // UNPAID, PARTIAL, PAID, OVERDUE
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  installments     InstallmentSchedule[]
+  payments         Payment[]
+}
+
+// 15. Installment Schedules
+model InstallmentSchedule {
+  id              String               @id @default(cuid())
+  feeAssignmentId String
+  feeAssignment   StudentFeeAssignment @relation(fields: [feeAssignmentId], references: [id], onDelete: Cascade)
+  installmentNo   Int
+  title           String               // e.g. "Installment 1 (Admission + Q1 Tuition)"
+  category        String               @default("TUITION")
+  dueDate         String               // YYYY-MM-DD
+  amount          Float
+  lateFee         Float                @default(0)
+  paidAmount      Float                @default(0)
+  status          String               @default("PENDING") // PENDING, PARTIAL, PAID, OVERDUE
+  paidAt          DateTime?
+  createdAt       DateTime             @default(now())
+}
+
+// 16. Payments ( never deleted when student deactivated )
+model Payment {
+  id                String               @id @default(cuid())
+  studentId         String
+  student           Student              @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  feeAssignmentId   String
+  feeAssignment     StudentFeeAssignment @relation(fields: [feeAssignmentId], references: [id], onDelete: Restrict)
+  installmentId     String?
+  feeCategory       String               @default("TUITION") // REGISTRATION, ADMISSION, TUITION, EXAM, STUDY_MATERIAL
+  amount            Float
+  taxAmount         Float                @default(0)
+  paymentMethod     String               // RAZORPAY_UPI, RAZORPAY_CARD, RAZORPAY_NETBANKING, OFFLINE_CASH, OFFLINE_BANK, OFFLINE_UPI, OFFLINE_CHEQUE
+  isOnline          Boolean              @default(true)
+  transactionRef    String               @unique
+  razorpayOrderId   String?              @unique
+  razorpayPaymentId String?              @unique
+  razorpaySignature String?
+  webhookEventId    String?              @unique
+  status            String               @default("SUCCESS") // CREATED, PENDING_VERIFICATION, SUCCESS, FAILED, REFUNDED
+  verifiedBy        String?
+  verifiedAt        DateTime?
+  notes             String?
+  paidAt            DateTime             @default(now())
+  createdAt         DateTime             @default(now())
+
+  receipt           Receipt?
+  refunds           Refund[]
+
+  @@index([studentId])
+  @@index([status])
+  @@index([paidAt])
+}
+
+// 17. Payment Receipts
+model Receipt {
+  id               String   @id @default(cuid())
+  receiptNumber    String   @unique // e.g. RCP-2026-0001
+  paymentId        String   @unique
+  payment          Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  studentName      String
+  studentCode      String
+  courseTitle      String
+  batchName        String
+  feeCategory      String
+  amountPaid       Float
+  taxAmount        Float
+  paymentMethod    String
+  transactionRef   String
+  balanceRemaining Float
+  issuedBy         String   @default("System / Accounts")
+  issuedAt         DateTime @default(now())
+}
+
+// 18. Refunds & Reversals
+model Refund {
+  id          String   @id @default(cuid())
+  paymentId   String
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  amount      Float
+  reason      String
+  mode        String   @default("BANK_TRANSFER")
+  referenceNo String?
+  status      String   @default("PROCESSED") // REQUESTED, PROCESSED, REJECTED
+  processedBy String
+  processedAt DateTime @default(now())
+}
+
+// 19. Attendance Management
+model Attendance {
+  id                    String   @id @default(cuid())
+  batchId               String
+  batch                 Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  studentId             String
+  student               Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  date                  String   // YYYY-MM-DD
+  status                String   // PRESENT, ABSENT, LATE, LEAVE
+  remarks               String?
+  markedBy              String
+  correctionHistoryJson String?  // JSON array of previous edits
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+
+  @@unique([batchId, studentId, date])
+  @@index([date])
+  @@index([studentId])
+}
+
+// 20. Examinations
+model Examination {
+  id           String     @id @default(cuid())
+  code         String     @unique
+  title        String
+  courseId     String
+  course       Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId      String
+  batch        Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  subject      String
+  examDate     String     // YYYY-MM-DD
+  durationMins Int        @default(180)
+  maxMarks     Float      @default(300)
+  passingMarks Float      @default(100)
+  examType     String     @default("UNIT_TEST") // UNIT_TEST, MOCK_TEST, GRAND_TEST, FINAL_EXAM
+  isPublished  Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+
+  marks        ExamMark[]
+}
+
+// 21. Examination Marks & Results
+model ExamMark {
+  id            String      @id @default(cuid())
+  examinationId String
+  examination   Examination @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  marksObtained Float
+  maxMarks      Float
+  percentage    Float
+  grade         String      // A+, A, B+, B, C, D, F
+  rankInBatch   Int?
+  remarks       String?
+  enteredBy     String
+  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime    @default(now())
+
+  @@unique([examinationId, studentId])
+}
+
+// 22. Assignments & Homework
+model Assignment {
+  id            String   @id @default(cuid())
+  batchId       String
+  batch         Batch    @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  teacherId     String?
+  teacher       Teacher? @relation(fields: [teacherId], references: [id])
+  title         String
+  subject       String
+  description   String
+  dueDate       String
+  maxMarks      Float    @default(50)
+  attachmentUrl String?
+  createdAt     DateTime @default(now())
+}
+
+// 23. Study Materials
+model StudyMaterial {
+  id          String   @id @default(cuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  batchId     String?
+  batch       Batch?   @relation(fields: [batchId], references: [id])
+  teacherId   String?
+  teacher     Teacher? @relation(fields: [teacherId], references: [id])
+  title       String
+  subject     String
+  category    String   // LECTURE_NOTES, DPP, PYQ, VIDEO_LECTURE, FORMULA_SHEET
+  description String
+  fileUrl     String
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+// 24. Enquiries & Lead Management
+model Enquiry {
+  id             String   @id @default(cuid())
+  branchId       String?
+  branch         Branch?  @relation(fields: [branchId], references: [id])
+  name           String
+  phone          String
+  email          String
+  courseInterest String
+  message        String
+  source         String   @default("WEBSITE") // WEBSITE, WHATSAPP, WALK_IN, CALL
+  status         String   @default("NEW") // NEW, CONTACTED, FOLLOW_UP, CONVERTED, CLOSED
+  followUpDate   String?
+  notes          String?
+  assignedTo     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+}
+
+// 25. Notifications (In-App + Configurable Email/SMS/WhatsApp)
+model Notification {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleTarget String?  // ALL, ADMIN, TEACHER, STUDENT
+  batchId    String?
+  title      String
+  message    String
+  category   String   @default("GENERAL") // REGISTRATION, ADMISSION, FEE, ATTENDANCE, EXAM, SCHEDULE, ANNOUNCEMENT
+  channel    String   @default("IN_APP") // IN_APP, EMAIL, SMS, WHATSAPP
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([roleTarget])
+}
+
+// 26. Website Content Management (CMS)
+model WebsiteContent {
+  id          String   @id @default(cuid())
+  section     String   @unique // HERO, ABOUT, ACHIEVEMENTS, TESTIMONIALS, ANNOUNCEMENTS, GALLERY, NEWS, FAQS, DIRECTOR_MESSAGE
+  title       String
+  subtitle    String?
+  contentJson String   // Structured JSON for dynamic rendering & admin editing
+  isActive    Boolean  @default(true)
+  updatedBy   String?
+  updatedAt   DateTime @updatedAt
+}
+
+// 27. Global Institute Settings
+model InstituteSetting {
+  id                  String   @id @default(cuid())
+  instituteName       String   @default("VidyaVikas Academy of Excellence")
+  tagline             String   @default("Empowering India's Future Rankers in JEE, NEET, UPSC & Foundation")
+  logoText            String   @default("VV")
+  address             String   @default("Plot 42, Knowledge Park III, Sector 62, Noida - 201309, Uttar Pradesh")
+  phone               String   @default("+91 98765 43210")
+  whatsapp            String   @default("919876543210")
+  email               String   @default("admissions@vidyavikas.edu.in")
+  website             String   @default("https://www.vidyavikas.edu.in")
+  academicSession     String   @default("2026-2027")
+  gstNumber           String   @default("09AABCV1234F1Z5")
+  defaultGstPercent   Float    @default(18)
+  enableOnlinePayment Boolean  @default(true)
+  enableEmailAlerts   Boolean  @default(true)
+  enableSmsAlerts     Boolean  @default(true)
+  enableWhatsappAlerts Boolean @default(true)
+  updatedAt           DateTime @updatedAt
+}
+
+// 28. Security & Financial Audit Logs
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  actorName  String
+  actorRole  String
+  action     String   // e.g. REGISTRATION_APPROVED, PAYMENT_VERIFIED, REFUND_ISSUED, ATTENDANCE_MODIFIED
+  entityType String   // REGISTRATION, ADMISSION, PAYMENT, STUDENT, COURSE, CMS
+  entityId   String
+  details    String
+  ipAddress  String   @default("127.0.0.1")
+  createdAt  DateTime @default(now())
+
+  @@index([entityType])
+  @@index([createdAt])
+}
